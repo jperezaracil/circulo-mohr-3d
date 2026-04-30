@@ -1,21 +1,14 @@
 """
 Círculos de Mohr 3D — Aplicación interactiva con Streamlit
 ==========================================================
-
-Cómo lanzar localmente:
-    pip install streamlit numpy matplotlib
-    streamlit run app_streamlit.py
-
-Cómo desplegar gratis para los alumnos:
-    1. Sube este archivo y un `requirements.txt` a un repositorio público de GitHub
-    2. Entra en https://streamlit.io/cloud y conecta tu repo
-    3. Comparte la URL con los alumnos (no necesitan instalar nada)
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+from mpl_toolkits.mplot3d import Axes3D                     # noqa: F401
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import streamlit as st
+
 
 st.title("Círculos de Mohr 3D — Visualización interactiva")
 st.markdown(
@@ -24,6 +17,10 @@ st.markdown(
     de rotación** del cubo en la barra lateral. El panel izquierdo muestra el
     cubo girado con las tensiones que actúan sobre cada cara, y el derecho los
     tres círculos de Mohr con la **región admisible** en amarillo.
+
+    Activa abajo la opción **"Plano oblicuo"** para calcular las tensiones que
+    actúan sobre un plano arbitrario definido por su normal — incluyendo el
+    vector tracción y la descomposición en ejes locales del plano.
 
     El caso **2D** se obtiene poniendo $\\sigma_z = \\tau_{xz} = \\tau_{yz} = 0$
     y rotando solo $\\gamma$.
@@ -38,6 +35,7 @@ def matriz_tension(sx, sy, sz, txy, txz, tyz):
                      [txy, sy,  tyz],
                      [txz, tyz, sz ]], dtype=float)
 
+
 def matriz_rotacion(alpha_deg, beta_deg, gamma_deg):
     a, b, g = np.deg2rad([alpha_deg, beta_deg, gamma_deg])
     Rx = np.array([[1, 0,         0        ],
@@ -51,15 +49,19 @@ def matriz_rotacion(alpha_deg, beta_deg, gamma_deg):
                    [0,          0,         1]])
     return Rz @ Ry @ Rx
 
+
 def transformar_tensor(T, R):
     return R.T @ T @ R
+
 
 def tensiones_principales_3d(T):
     vals, vecs = np.linalg.eigh(T)
     idx = np.argsort(vals)[::-1]
     return vals[idx], vecs[:, idx]
 
+
 def estado_caras(Tp):
+    """Para cada cara del cubo girado: (σ_n, |τ_n|)."""
     out = []
     for i in range(3):
         t = Tp[:, i]
@@ -68,24 +70,79 @@ def estado_caras(Tp):
         out.append((sn, tn))
     return out
 
+
+def tensiones_en_plano(T0, theta_deg, phi_deg):
+    """
+    Tensiones sobre un plano arbitrario, definido por la dirección de su
+    normal en coordenadas esféricas (θ desde el eje z, φ azimut desde el
+    eje x).
+
+    Los **ejes locales del plano** son la terna ortonormal (n, eθ, eφ),
+    donde n es la normal y (eθ, eφ) son dos direcciones tangentes en el
+    plano (las direcciones naturales de aumento de θ y φ respectivamente).
+
+    Devuelve un dict con:
+        n, e_theta, e_phi    Vectores unitarios en coords globales
+        t                    Vector tracción t = σ·n   (coords globales)
+        sigma_n              Tensión normal al plano (escalar)
+        tau_vec              Vector cortante τ = t − σ_n n (coords globales)
+        tau_mag              |τ| (magnitud de la cortante en el plano)
+        tau_theta, tau_phi   Componentes de τ en los ejes locales del plano
+    """
+    th = np.deg2rad(theta_deg)
+    ph = np.deg2rad(phi_deg)
+
+    n = np.array([np.sin(th) * np.cos(ph),
+                  np.sin(th) * np.sin(ph),
+                  np.cos(th)])
+    e_theta = np.array([ np.cos(th) * np.cos(ph),
+                         np.cos(th) * np.sin(ph),
+                        -np.sin(th)])
+    e_phi   = np.array([-np.sin(ph),
+                         np.cos(ph),
+                         0.0])
+
+    t = T0 @ n
+    sigma_n = float(np.dot(t, n))
+    tau_vec = t - sigma_n * n
+    tau_mag = float(np.sqrt(max(np.dot(t, t) - sigma_n**2, 0.0)))
+    tau_theta = float(np.dot(tau_vec, e_theta))
+    tau_phi   = float(np.dot(tau_vec, e_phi))
+
+    return {
+        "n": n, "e_theta": e_theta, "e_phi": e_phi,
+        "t": t,
+        "sigma_n": sigma_n,
+        "tau_vec": tau_vec,
+        "tau_mag": tau_mag,
+        "tau_theta": tau_theta, "tau_phi": tau_phi,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Funciones de dibujo
 # ---------------------------------------------------------------------------
-def dibujar_cubo_3d(ax, T0, R):
+def dibujar_cubo_3d(ax, T0, R, plano=None):
     ax.clear()
     L = 1.0
     Tp = transformar_tensor(T0, R)
+
     corners0 = np.array([[a, b, c]
                          for a in (-L, L) for b in (-L, L) for c in (-L, L)])
     edges_idx = [(0,1),(0,2),(0,4),(1,3),(1,5),(2,3),
                  (2,6),(3,7),(4,5),(4,6),(5,7),(6,7)]
+
+    # Cubo de referencia (sin girar)
     for i, j in edges_idx:
         ax.plot(*zip(corners0[i], corners0[j]),
                 color='gray', lw=0.6, ls=':', alpha=0.4)
+
+    # Cubo girado
     corners = corners0 @ R.T
     for i, j in edges_idx:
         ax.plot(*zip(corners[i], corners[j]), color='black', lw=1.6)
 
+    # Tensiones en cada cara
     smax = max(np.abs(T0).max(), 1e-9)
     k = 0.7 / smax
     colores_caras = ['#d62728', '#2ca02c', '#1f77b4']
@@ -110,20 +167,69 @@ def dibujar_cubo_3d(ax, T0, R):
         ax.text(*(1.55*n), nombres_caras[i], color=colores_caras[i],
                 fontsize=11, fontweight='bold')
 
+    # Plano oblicuo (si está activo)
+    if plano is not None:
+        n_plano = plano["n"]
+        e1 = plano["e_theta"]
+        e2 = plano["e_phi"]
+
+        # 1) Patch del plano (atraviesa el cubo, centrado en origen)
+        size = 1.6 * L
+        verts = np.array([
+             size*e1 + size*e2,
+            -size*e1 + size*e2,
+            -size*e1 - size*e2,
+             size*e1 - size*e2,
+        ])
+        poly = Poly3DCollection([verts], alpha=0.22,
+                                facecolor='magenta', edgecolor='magenta', lw=1.2)
+        ax.add_collection3d(poly)
+
+        # 2) Normal del plano (verde, fina) — referencia de orientación
+        ax.quiver(0, 0, 0, *(1.9*n_plano),
+                  color='darkgreen', lw=1.4,
+                  arrow_length_ratio=0.10, normalize=False)
+        ax.text(*(2.05*n_plano), r"$\vec{n}$",
+                color='darkgreen', fontsize=11, fontweight='bold')
+
+        # 3) Vector tracción t (morado, grueso)
+        t_vec = plano["t"]
+        ax.quiver(0, 0, 0, *(t_vec*k),
+                  color='purple', lw=3.0,
+                  arrow_length_ratio=0.15, normalize=False)
+        ax.text(*(t_vec*k*1.1), r"$\vec{t}$",
+                color='purple', fontsize=11, fontweight='bold')
+
+        # 4) Descomposición de t (en discontinuo): σ_n·n + τ_vec
+        sigma_n = plano["sigma_n"]
+        tau_vec = plano["tau_vec"]
+        ax.quiver(0, 0, 0, *(sigma_n*k*n_plano),
+                  color='#c0392b', lw=1.5, ls='--',
+                  arrow_length_ratio=0.12, normalize=False)
+        if np.linalg.norm(tau_vec) > 1e-6 * smax:
+            ax.quiver(0, 0, 0, *(tau_vec*k),
+                      color='#1a5276', lw=1.5, ls='--',
+                      arrow_length_ratio=0.12, normalize=False)
+
+    # Ejes globales
     for i, label in enumerate(['x', 'y', 'z']):
         e = np.zeros(3); e[i] = 2.3
         ax.quiver(0, 0, 0, *e, color='gray', lw=1, arrow_length_ratio=0.06)
         ax.text(*(e*1.08), label, color='gray', fontsize=10)
+
     ax.set_xlim(-2.5, 2.5); ax.set_ylim(-2.5, 2.5); ax.set_zlim(-2.5, 2.5)
     try:
         ax.set_box_aspect([1, 1, 1])
     except AttributeError:
         pass
     ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('z')
-    ax.set_title('Cubo girado y tensiones en sus caras')
+    titulo = 'Cubo girado y tensiones en sus caras'
+    if plano is not None:
+        titulo += '\n+ plano oblicuo (magenta) y tracción $\\vec{t}$ (morado)'
+    ax.set_title(titulo)
 
 
-def dibujar_mohr_3d(ax, T0, R):
+def dibujar_mohr_3d(ax, T0, R, plano=None):
     ax.clear()
     Tp = transformar_tensor(T0, R)
     s_arr, _ = tensiones_principales_3d(T0)
@@ -151,7 +257,8 @@ def dibujar_mohr_3d(ax, T0, R):
     ax.plot(C13 + R13*np.cos(th), R13*np.sin(th),
             color='#d62728', lw=1.8, label=f'C₁₃  R={R13:.1f} (máx)')
 
-    for sigma, lab in zip([s1, s2, s3], [r'$\sigma_1$', r'$\sigma_2$', r'$\sigma_3$']):
+    for sigma, lab in zip([s1, s2, s3],
+                          [r'$\sigma_1$', r'$\sigma_2$', r'$\sigma_3$']):
         ax.plot(sigma, 0, 'ko', markersize=6, zorder=4)
         ax.annotate(f'{lab}={sigma:.1f}', xy=(sigma, 0),
                     xytext=(0, -14), textcoords='offset points',
@@ -166,6 +273,17 @@ def dibujar_mohr_3d(ax, T0, R):
         ax.annotate(f"  {nombres[i]} ({sn:.1f}, {tn:.1f})",
                     xy=(sn, tn), color=colores[i], fontsize=9, va='center')
 
+    # Punto del plano oblicuo (estrella magenta)
+    if plano is not None:
+        sn_pl = plano["sigma_n"]
+        tn_pl = plano["tau_mag"]
+        ax.plot(sn_pl, tn_pl, marker='*', color='magenta', markersize=20,
+                markeredgecolor='black', markeredgewidth=0.8, zorder=7,
+                label='Plano oblicuo')
+        ax.annotate(f"  Plano ({sn_pl:.1f}, {tn_pl:.1f})",
+                    xy=(sn_pl, tn_pl), color='magenta',
+                    fontsize=10, fontweight='bold', va='center')
+
     ax.axhline(0, color='gray', lw=0.7)
     ax.set_aspect('equal')
     ax.set_xlabel(r'$\sigma$')
@@ -173,6 +291,7 @@ def dibujar_mohr_3d(ax, T0, R):
     ax.grid(alpha=0.3)
     ax.legend(loc='upper right', fontsize=8)
     ax.set_title(rf'Círculos de Mohr 3D · $\tau_{{máx}}={R13:.2f}$')
+
 
 # ---------------------------------------------------------------------------
 # Sidebar — controles
@@ -193,7 +312,7 @@ gamma = st.sidebar.slider("γ — giro alrededor de z (°)", -90, 90, 0, 1)
 st.sidebar.markdown("---")
 preset = st.sidebar.selectbox(
     "Casos didácticos (preset)",
-    ["—", "Tracción uniaxial", "Cortante puro 2D",
+    ["—", "Estado plano (XY)", "Tracción uniaxial", "Cortante puro 2D",
      "Estado hidrostático", "Cortante 3D genérico"]
 )
 st.sidebar.caption(
@@ -201,7 +320,13 @@ st.sidebar.caption(
     "para ver cómo se mueven los puntos sobre los círculos."
 )
 
-if preset == "Tracción uniaxial":
+if preset == "Estado plano (XY)":
+    # Caso 2D clásico: solo σx, σy, τxy en el plano xy.
+    # Todo lo que sale del plano vale 0, así que el cubo solo siente
+    # tensiones en sus caras x e y. La cara z queda libre (σz = 0).
+    sigma_x, sigma_y, sigma_z = 80, 20, 0
+    tau_xy, tau_xz, tau_yz    = 30, 0, 0
+elif preset == "Tracción uniaxial":
     sigma_x, sigma_y, sigma_z = 100, 0, 0
     tau_xy = tau_xz = tau_yz = 0
 elif preset == "Cortante puro 2D":
@@ -214,6 +339,24 @@ elif preset == "Cortante 3D genérico":
     sigma_x, sigma_y, sigma_z = 80, 20, -30
     tau_xy, tau_xz, tau_yz = 25, 15, 10
 
+# --- Plano oblicuo arbitrario ---
+st.sidebar.markdown("---")
+st.sidebar.header("Plano oblicuo (opcional)")
+mostrar_plano = st.sidebar.checkbox(
+    "Tensiones sobre un plano de orientación arbitraria",
+    value=False,
+    help="Define un plano por la dirección de su normal y se calcula el "
+         "vector tracción y sus componentes (σ_n y τ).",
+)
+if mostrar_plano:
+    theta_p = st.sidebar.slider("θ — inclinación de n̂ desde eje z (°)",
+                                0, 180, 45, 1)
+    phi_p   = st.sidebar.slider("φ — azimut de n̂ desde eje x (°)",
+                                0, 360, 0, 1)
+else:
+    theta_p, phi_p = None, None
+
+
 # ---------------------------------------------------------------------------
 # Cálculos y figura
 # ---------------------------------------------------------------------------
@@ -222,16 +365,80 @@ R  = matriz_rotacion(alpha, beta, gamma)
 Tp = transformar_tensor(T0, R)
 s_arr, _ = tensiones_principales_3d(T0)
 
+plano = tensiones_en_plano(T0, theta_p, phi_p) if mostrar_plano else None
+
 fig = plt.figure(figsize=(14, 6.5))
 ax1 = fig.add_subplot(1, 2, 1, projection='3d')
 ax2 = fig.add_subplot(1, 2, 2)
-dibujar_cubo_3d(ax1, T0, R)
-dibujar_mohr_3d(ax2, T0, R)
+dibujar_cubo_3d(ax1, T0, R, plano=plano)
+dibujar_mohr_3d(ax2, T0, R, plano=plano)
 plt.tight_layout()
 st.pyplot(fig)
 
+
 # ---------------------------------------------------------------------------
-# Tabla de resultados
+# Explicación: qué representan los puntos del Mohr y por qué se mueven
+# ---------------------------------------------------------------------------
+with st.expander(
+    "¿Qué representan los tres puntos de colores y por qué se mueven al "
+    "girar el cubo?"
+):
+    st.markdown(
+        r"""
+**Los tres puntos sobre el círculo de Mohr** corresponden a las **tres
+caras del cubo girado**:
+
+- **Punto rojo** $x'$ — tensiones sobre la cara cuya normal es el eje
+  $x'$ del cubo girado: $(\sigma_{x'},\ |\tau|_{\text{cara }x'})$.
+- **Punto verde** $y'$ — igual para la cara $y'$.
+- **Punto azul** $z'$ — igual para la cara $z'$.
+
+#### Por qué se mueven al rotar
+
+Las caras del cubo son tres **planos** que pasan por el mismo punto del
+sólido. Rotar el cubo significa **elegir otros tres planos
+perpendiculares** sobre los que medir las tensiones. Como las
+tensiones que actúan sobre un plano dependen de la orientación del
+plano, al cambiar los planos cambian los pares $(\sigma_n, |\tau|)$
+correspondientes — y por tanto los puntos se mueven.
+
+Es el mismo principio que en el círculo de Mohr 2D: cuando giras el
+elemento un ángulo $\theta$, el punto recorre el círculo. En 3D
+ocurre lo mismo, solo que hay **tres caras** (tres puntos) moviéndose
+simultáneamente, cada uno por su propia trayectoria dentro de la
+región admisible.
+
+#### Qué *no* cambia con la rotación
+
+- **Los tres círculos** son fijos. Dependen únicamente de las tensiones
+  principales $\sigma_1,\sigma_2,\sigma_3$, que son **invariantes** del
+  estado tensional (no dependen del sistema de referencia).
+- **Las tensiones principales** marcadas en negro sobre el eje $\sigma$
+  no se mueven.
+- **La región amarilla** es la misma. Y los tres puntos, por mucho que
+  los muevas, **nunca pueden salir de ella** — sería físicamente
+  imposible.
+
+#### Casos límite que lo confirman
+
+- **Todos los ángulos a 0**: los tres puntos quedan en
+  $(\sigma_x, |\tau|_{\text{cara }x})$, $(\sigma_y, |\tau|_{\text{cara }y})$,
+  $(\sigma_z, |\tau|_{\text{cara }z})$ — exactamente las tensiones del
+  tensor inicial sobre las caras $x, y, z$.
+- **Cubo alineado con las direcciones principales**: los tres puntos
+  caen sobre el eje $\sigma$ con $|\tau|=0$. Las tres caras del cubo
+  son entonces los planos principales y solo soportan tensión normal
+  pura.
+- **Estado hidrostático** ($\sigma_x = \sigma_y = \sigma_z$, sin
+  cortantes): los círculos degeneran en un punto y los tres puntos del
+  cubo se quedan ahí, gires lo que gires. Es la única configuración en
+  la que rotar el cubo no afecta a los puntos.
+        """
+    )
+
+
+# ---------------------------------------------------------------------------
+# Resultados — tensor inicial / rotado / tensiones principales
 # ---------------------------------------------------------------------------
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -260,3 +467,277 @@ with col3:
     st.latex(rf"\sigma_2 = {s_arr[1]:+.2f}")
     st.latex(rf"\sigma_3 = {s_arr[2]:+.2f}")
     st.latex(rf"\tau_{{máx}} = {(s_arr[0]-s_arr[2])/2:.2f}")
+
+
+# ---------------------------------------------------------------------------
+# Resultados — plano oblicuo
+# ---------------------------------------------------------------------------
+if plano is not None:
+    st.markdown("---")
+    st.subheader("Tensiones sobre el plano oblicuo")
+
+    n_pl = plano["n"]
+    t_pl = plano["t"]
+
+    cA, cB = st.columns(2)
+
+    with cA:
+        st.markdown("**Geometría del plano**")
+        st.latex(rf"\vec{{n}} = ({n_pl[0]:+.3f},\ {n_pl[1]:+.3f},\ {n_pl[2]:+.3f})")
+        st.caption("(cosenos directores de la normal)")
+
+        st.markdown("**Vector tracción** $\\vec{t} = \\boldsymbol{\\sigma}\\cdot\\vec{n}$")
+        st.caption("expresado en ejes globales (x, y, z)")
+        st.latex(rf"""
+\vec{{t}} =
+\begin{{pmatrix}}
+{t_pl[0]:+.3f} \\ {t_pl[1]:+.3f} \\ {t_pl[2]:+.3f}
+\end{{pmatrix}}
+""")
+
+    with cB:
+        st.markdown("**Componentes en ejes locales del plano**")
+        st.caption(
+            "Los ejes locales son $(\\vec{n},\\, \\vec{e}_\\theta,\\, \\vec{e}_\\varphi)$, "
+            "donde $\\vec{n}$ es la normal y $(\\vec{e}_\\theta, \\vec{e}_\\varphi)$ son "
+            "dos direcciones tangentes en el plano."
+        )
+        st.latex(rf"\sigma_n = \vec{{t}}\cdot\vec{{n}} = {plano['sigma_n']:+.3f}")
+        st.latex(rf"|\vec{{\tau}}| = \sqrt{{|\vec{{t}}|^2 - \sigma_n^2}} = {plano['tau_mag']:.3f}")
+        st.latex(rf"\tau_{{e_\theta}} = {plano['tau_theta']:+.3f}")
+        st.latex(rf"\tau_{{e_\varphi}} = {plano['tau_phi']:+.3f}")
+
+    st.warning(
+        "**Cuidado con los ejes**: los valores $\\sigma_n,\\ \\tau_{e_\\theta},\\ "
+        "\\tau_{e_\\varphi}$ están expresados en los **ejes locales del plano**, no "
+        "en los ejes globales (x, y, z). $\\sigma_n$ es la proyección de $\\vec{t}$ "
+        "sobre la normal, y $\\tau_{e_\\theta},\\ \\tau_{e_\\varphi}$ son las "
+        "proyecciones del vector cortante $\\vec{\\tau}$ sobre las dos tangentes "
+        "del plano. La magnitud $|\\vec{\\tau}|$ es la que aparece sobre el círculo "
+        "de Mohr (estrella magenta) y siempre cae dentro de la región amarilla."
+    )
+
+    with st.expander("Definición de los ejes locales"):
+        st.markdown(
+            r"""
+La dirección normal al plano se parametriza con dos ángulos esféricos:
+
+$$\vec{n} = (\sin\theta\cos\varphi,\ \sin\theta\sin\varphi,\ \cos\theta)$$
+
+Las dos direcciones tangentes naturales (las del incremento de $\theta$ y
+$\varphi$) son:
+
+$$\vec{e}_\theta = (\cos\theta\cos\varphi,\ \cos\theta\sin\varphi,\ -\sin\theta)$$
+
+$$\vec{e}_\varphi = (-\sin\varphi,\ \cos\varphi,\ 0)$$
+
+La terna $(\vec{n},\ \vec{e}_\theta,\ \vec{e}_\varphi)$ es ortonormal y forma
+los **ejes locales del plano**. El vector tracción se descompone como:
+
+$$\vec{t} = \sigma_n\,\vec{n} + \tau_{e_\theta}\,\vec{e}_\theta + \tau_{e_\varphi}\,\vec{e}_\varphi$$
+
+con $\sigma_n = \vec{t}\cdot\vec{n}$, $\tau_{e_\theta} = \vec{\tau}\cdot\vec{e}_\theta$
+y $\tau_{e_\varphi} = \vec{\tau}\cdot\vec{e}_\varphi$. La cortante en el plano
+es el vector $\vec{\tau} = \vec{t} - \sigma_n\vec{n}$, contenido en el plano,
+de magnitud $|\vec{\tau}| = \sqrt{\tau_{e_\theta}^2 + \tau_{e_\varphi}^2}$.
+            """
+        )
+
+
+# ---------------------------------------------------------------------------
+# Problemas propuestos
+# ---------------------------------------------------------------------------
+st.markdown("---")
+st.header("Problemas propuestos")
+st.caption(
+    "Resuelve cada problema a mano, comprueba con la app, y solo después "
+    "despliega la solución."
+)
+
+
+with st.expander("Problema 1 — Estado plano clásico", expanded=False):
+    st.markdown(
+        r"""
+Una pieza está sometida a un estado de tensión plano:
+
+$$\sigma_x = 80\ \text{MPa},\quad \sigma_y = 20\ \text{MPa},\quad \tau_{xy} = 30\ \text{MPa},\quad \sigma_z = \tau_{xz} = \tau_{yz} = 0.$$
+
+Calcula:
+
+1. Las **tensiones principales** $\sigma_1, \sigma_2, \sigma_3$ (en 3D).
+2. El **ángulo principal** $\theta_p$ que orienta $\sigma_1$ en el plano $xy$.
+3. La **cortante máxima** $\tau_{\max}$ en 3D y compárala con la
+   $\tau_{\max}$ que se obtendría considerando solo el plano $xy$.
+
+> **Pista**: en estado plano $\sigma_z = 0$ es siempre una de las tres
+> tensiones principales en 3D. La $\tau_{\max}$ 3D no coincide con la 2D.
+"""
+    )
+
+with st.expander("Solución del Problema 1", expanded=False):
+    st.markdown(
+        r"""
+**1) Tensiones principales 2D:**
+
+$$\sigma_{1,2} = \tfrac{\sigma_x+\sigma_y}{2} \pm \sqrt{\bigl(\tfrac{\sigma_x-\sigma_y}{2}\bigr)^2 + \tau_{xy}^2} = 50 \pm \sqrt{900 + 900} = 50 \pm 42{,}43$$
+
+Como $\sigma_z = 0$ es también principal, ordenando de mayor a menor:
+
+$$\sigma_1 = 92{,}43\ \text{MPa},\quad \sigma_2 = 7{,}57\ \text{MPa},\quad \sigma_3 = 0\ \text{MPa}$$
+
+**2) Ángulo principal:**
+
+$$\tan(2\theta_p) = \frac{2\tau_{xy}}{\sigma_x - \sigma_y} = \frac{60}{60} = 1 \;\Rightarrow\; 2\theta_p = 45^{\circ} \;\Rightarrow\; \theta_p = 22{,}5^{\circ}$$
+
+**3) Cortante máxima:**
+
+- En 2D (solo plano $xy$): $\tau_{\max,xy} = \tfrac{\sigma_1-\sigma_2}{2} = 42{,}43\ \text{MPa}$.
+- En 3D (todos los planos posibles): $\tau_{\max} = \tfrac{\sigma_1-\sigma_3}{2} = 46{,}21\ \text{MPa}$.
+
+La cortante máxima 3D es **mayor** porque incluye planos que salen del plano
+$xy$. El plano de $\tau_{\max}$ 3D biseca a $\sigma_1$ y $\sigma_3$.
+
+**Verificación con la app**: preset *"Estado plano (XY)"*. El círculo grande
+$C_{13}$ pasa por el origen (porque $\sigma_3 = 0$). Su radio es $46{,}21$.
+"""
+    )
+
+
+with st.expander("Problema 2 — Tracción uniaxial: tensiones en un plano oblicuo",
+                 expanded=False):
+    st.markdown(
+        r"""
+Una barra está sometida a tracción uniaxial pura: $\sigma_x = 120\ \text{MPa}$,
+todas las demás componentes nulas. Considera un plano cuyo vector normal
+forma un ángulo de $60^{\circ}$ con el eje $x$, contenido en el plano $xy$.
+
+1. Calcula $\sigma_n$ y $|\vec\tau|$ sobre ese plano.
+2. ¿Para qué orientación del plano se hace **máxima** la cortante $|\vec\tau|$?
+   ¿Cuánto vale ese máximo?
+3. Comprueba con la app activando *"Plano oblicuo"* con $\theta = 90^{\circ}$
+   y $\varphi = 60^{\circ}$.
+"""
+    )
+
+with st.expander("Solución del Problema 2", expanded=False):
+    st.markdown(
+        r"""
+Sobre un plano cuya normal forma un ángulo $\alpha$ con el eje de la
+tracción uniaxial, las tensiones son (resultado clásico):
+
+$$\sigma_n = \sigma_x \cos^2\alpha,\qquad |\vec\tau| = \sigma_x \sin\alpha\cos\alpha = \tfrac{\sigma_x}{2}\sin(2\alpha).$$
+
+**1) Para $\alpha = 60^{\circ}$:**
+
+$$\sigma_n = 120 \cdot \cos^2 60^{\circ} = 120 \cdot 0{,}25 = 30\ \text{MPa}$$
+
+$$|\vec\tau| = 120 \cdot \sin 60^{\circ} \cdot \cos 60^{\circ} = 120 \cdot 0{,}866 \cdot 0{,}5 = 51{,}96\ \text{MPa}$$
+
+**2) Cortante máxima:**
+
+$|\vec\tau|$ es máximo cuando $\sin(2\alpha) = 1$, esto es $\alpha = 45^{\circ}$:
+
+$$|\vec\tau|_{\max} = \tfrac{\sigma_x}{2} = 60\ \text{MPa}$$
+
+Es el extremo superior del círculo de Mohr (radio $= \sigma_x/2$).
+
+**3) En la app**: con preset *"Tracción uniaxial"* y plano oblicuo
+$\theta = 90^{\circ}$, $\varphi = 60^{\circ}$, la estrella magenta cae en
+$(30,\ 51{,}96)$, sobre el círculo grande.
+"""
+    )
+
+
+with st.expander("Problema 3 — Estado 3D ya principal", expanded=False):
+    st.markdown(
+        r"""
+En cierto punto de un sólido, el sistema $xyz$ coincide con las direcciones
+principales del estado tensional:
+
+$$\sigma_x = 100\ \text{MPa},\quad \sigma_y = 40\ \text{MPa},\quad \sigma_z = -20\ \text{MPa},\quad \tau_{xy} = \tau_{xz} = \tau_{yz} = 0.$$
+
+1. ¿Cómo se ven los tres puntos del cubo en el círculo de Mohr cuando los
+   ángulos de rotación son $\alpha = \beta = \gamma = 0$? ¿Por qué?
+2. Calcula la cortante máxima 3D y la tensión normal sobre el plano donde
+   se produce.
+3. Comprueba con la app activando un plano oblicuo a $\theta = 45^{\circ},\ \varphi = 0^{\circ}$.
+"""
+    )
+
+with st.expander("Solución del Problema 3", expanded=False):
+    st.markdown(
+        r"""
+**1)** Como los ejes $xyz$ son ya las direcciones principales y no hay
+cortantes, las tensiones que actúan sobre las caras del cubo son
+**solo normales**. En el círculo de Mohr, los tres puntos caen sobre el
+eje $\sigma$ con $|\tau| = 0$:
+
+$$x' \to (100, 0),\quad y' \to (40, 0),\quad z' \to (-20, 0).$$
+
+**2)** Tensiones principales ya ordenadas:
+$\sigma_1 = 100,\ \sigma_2 = 40,\ \sigma_3 = -20$ MPa. Cortante máxima:
+
+$$\tau_{\max} = \tfrac{\sigma_1 - \sigma_3}{2} = \tfrac{100 - (-20)}{2} = 60\ \text{MPa}$$
+
+Tensión normal sobre el plano de $\tau_{\max}$ (que biseca $\sigma_1$ y $\sigma_3$):
+
+$$\sigma_n = \tfrac{\sigma_1 + \sigma_3}{2} = 40\ \text{MPa}$$
+
+**3)** En la app, con plano oblicuo $\theta = 45^{\circ},\ \varphi = 0^{\circ}$ (la normal
+biseca los ejes $x$ y $z$, manteniéndose perpendicular al $y$), la estrella
+magenta cae en $(40,\ 60)$ — exactamente la cima del círculo grande $C_{13}$.
+"""
+    )
+
+
+with st.expander("Problema 4 — Estado hidrostático",
+                 expanded=False):
+    st.markdown(
+        r"""
+Un punto está sometido a un estado hidrostático:
+
+$$\sigma_x = \sigma_y = \sigma_z = p,\qquad \tau_{xy} = \tau_{xz} = \tau_{yz} = 0.$$
+
+Demuestra que **sobre cualquier plano** que pase por el punto, la tensión
+normal vale $\sigma_n = p$ y la cortante $|\vec\tau| = 0$. Es decir, todas
+las direcciones son principales.
+
+1. Demostración analítica.
+2. Comprobación con la app: preset *"Estado hidrostático"*. Mueve los
+   ángulos $\alpha, \beta, \gamma$. Activa también un plano oblicuo
+   arbitrario.
+"""
+    )
+
+with st.expander("Solución del Problema 4", expanded=False):
+    st.markdown(
+        r"""
+**1)** El tensor de tensiones es $\boldsymbol\sigma = p\,\mathbf{I}$
+(la identidad escalada por $p$). Para una normal unitaria cualquiera
+$\vec n$:
+
+$$\vec t = \boldsymbol\sigma\,\vec n = p\,\mathbf{I}\,\vec n = p\,\vec n.$$
+
+El vector tracción es **paralelo a $\vec n$** y de magnitud $p$.
+
+$$\sigma_n = \vec t \cdot \vec n = p\,(\vec n\cdot\vec n) = p$$
+
+$$\vec\tau = \vec t - \sigma_n\,\vec n = p\,\vec n - p\,\vec n = \vec 0 \;\Rightarrow\; |\vec\tau| = 0$$
+
+Por tanto, **sobre todo plano**: $\sigma_n = p$ y $|\vec\tau| = 0$. Todos
+los planos son planos principales.
+
+**2)** En la app:
+
+- Los **tres círculos degeneran en un único punto** $(p, 0)$ porque
+  $\sigma_1 = \sigma_2 = \sigma_3 = p$.
+- Los tres puntos $x', y', z'$ caen en ese mismo punto, sin moverse
+  cuando giras los ángulos.
+- Cualquier plano oblicuo da la misma estrella magenta en $(p, 0)$.
+
+Esta es **la única configuración tensional** en la que rotar el cubo no
+afecta a las tensiones. En la práctica, un sólido sumergido en un fluido
+en reposo está en estado hidrostático (con $p$ negativa, compresión).
+"""
+    )
+
