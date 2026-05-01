@@ -313,7 +313,8 @@ st.sidebar.markdown("---")
 preset = st.sidebar.selectbox(
     "Casos didácticos (preset)",
     ["—", "Estado plano (XY)", "Tracción uniaxial", "Cortante puro 2D",
-     "Estado hidrostático", "Cortante 3D genérico"]
+     "Torsión pura (barra eje X)", "Estado hidrostático",
+     "Cortante 3D genérico"]
 )
 st.sidebar.caption(
     "Selecciona un preset para fijar el tensor; sigue moviendo los ángulos "
@@ -332,6 +333,14 @@ elif preset == "Tracción uniaxial":
 elif preset == "Cortante puro 2D":
     sigma_x = sigma_y = sigma_z = 0
     tau_xy, tau_xz, tau_yz = 50, 0, 0
+elif preset == "Torsión pura (barra eje X)":
+    # Estado tensional en un punto de la superficie de un eje cilíndrico
+    # sometido a torsión pura. La tensión cortante τxy = T·r/J vale 60 MPa.
+    # X = eje longitudinal, Y = tangente a la superficie, Z = radial.
+    # Las tensiones normales son nulas. Las direcciones principales son
+    # las hélices a ±45° respecto al eje X.
+    sigma_x = sigma_y = sigma_z = 0
+    tau_xy, tau_xz, tau_yz = 60, 0, 0
 elif preset == "Estado hidrostático":
     sigma_x = sigma_y = sigma_z = 50
     tau_xy = tau_xz = tau_yz = 0

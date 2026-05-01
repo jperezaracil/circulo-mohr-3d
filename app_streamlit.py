@@ -16,12 +16,14 @@ st.set_page_config(
     page_icon="◯",
 )
 
-inicio = st.Page("paginas/inicio.py",
-                 title="Inicio", icon=":material/home:", default=True)
-mohr   = st.Page("paginas/mohr.py",
-                 title="Círculos de Mohr 3D", icon=":material/circle:")
-pandeo = st.Page("paginas/pandeo.py",
-                 title="Pandeo de columnas", icon=":material/architecture:")
+inicio   = st.Page("paginas/inicio.py",
+                   title="Inicio", icon=":material/home:", default=True)
+mohr     = st.Page("paginas/mohr.py",
+                   title="Círculos de Mohr 3D", icon=":material/circle:")
+mohr_2d  = st.Page("paginas/mohr_2d.py",
+                   title="Mohr 2D — Sección YZ", icon=":material/blur_circular:")
+pandeo   = st.Page("paginas/pandeo.py",
+                   title="Pandeo de columnas", icon=":material/architecture:")
 
-pg = st.navigation([inicio, mohr, pandeo])
+pg = st.navigation([inicio, mohr, mohr_2d, pandeo])
 pg.run()
