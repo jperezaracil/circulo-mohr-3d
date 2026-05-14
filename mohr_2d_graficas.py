@@ -18,6 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
+import estilo  # noqa: F401  (aplica paleta clara al importar)
 from mohr_2d_calculos import transformar_2d, principales_2d
 
 

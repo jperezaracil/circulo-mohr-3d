@@ -22,8 +22,11 @@ mohr     = st.Page("paginas/mohr.py",
                    title="Círculos de Mohr 3D", icon=":material/circle:")
 mohr_2d  = st.Page("paginas/mohr_2d.py",
                    title="Mohr 2D — Sección YZ", icon=":material/blur_circular:")
+ejercicios = st.Page("paginas/ejercicios.py",
+                     title="Ejercicios de Mohr",
+                     icon=":material/school:")
 pandeo   = st.Page("paginas/pandeo.py",
                    title="Pandeo de columnas", icon=":material/architecture:")
 
-pg = st.navigation([inicio, mohr, mohr_2d, pandeo])
+pg = st.navigation([inicio, mohr, mohr_2d, ejercicios, pandeo])
 pg.run()

@@ -1,0 +1,11 @@
+# Tema claro y limpio para la app de resistencia de materiales.
+[theme]
+base                     = "light"
+primaryColor             = "#0a5fa8"
+backgroundColor          = "#ffffff"
+secondaryBackgroundColor = "#f4f6fa"
+textColor                = "#1f2530"
+font                     = "sans serif"
+
+[client]
+toolbarMode = "minimal"

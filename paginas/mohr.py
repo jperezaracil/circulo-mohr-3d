@@ -3,11 +3,19 @@ Círculos de Mohr 3D — Aplicación interactiva con Streamlit
 ==========================================================
 """
 
+import os
+import sys
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D                     # noqa: F401
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import streamlit as st
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+import estilo  # noqa: F401  (aplica paleta clara al importar)
 
 
 st.title("Círculos de Mohr 3D — Visualización interactiva")
