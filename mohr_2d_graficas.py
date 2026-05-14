@@ -149,7 +149,7 @@ def dibujar_elemento_2d(ax, sy, sz, tyz, theta_deg, plano=None):
 # ---------------------------------------------------------------------------
 # Panel derecho: círculo de Mohr 2D
 # ---------------------------------------------------------------------------
-def dibujar_mohr_2d(ax, sy, sz, tyz, theta_deg, plano=None):
+def dibujar_mohr_2d(ax, sy, sz, tyz, theta_deg, plano=None, consulta=None):
     """Círculo de Mohr 2D para la sección YZ.
 
     Convención: punto Y plotea en (σy', −τy'z'), punto Z en (σz', +τy'z').
@@ -196,6 +196,28 @@ def dibujar_mohr_2d(ax, sy, sz, tyz, theta_deg, plano=None):
                 label='Plano de corte')
         ax.text(sn, -tau, f"   Plano ({sn:.1f}, {-tau:+.1f})",
                 color='magenta', fontsize=9, fontweight='bold', va='center')
+
+    # Punto de consulta (σ_q, τ_q)
+    if consulta is not None:
+        sq  = consulta["sigma_q"]
+        tq  = consulta["tau_q"]
+        col = '#e67e22' if consulta["on_circle"] else '#7f8c8d'
+        ax.plot(sq, tq, marker='D', color=col, markersize=12,
+                markeredgecolor='black', markeredgewidth=0.7, zorder=7,
+                label='Punto consulta')
+        ax.text(sq, tq, f"   Consulta ({sq:.1f}, {tq:+.1f})",
+                color=col, fontsize=9, fontweight='bold', va='center')
+        # Si no está sobre el círculo, dibuja una línea hasta el punto
+        # más cercano del círculo para mostrar la distancia.
+        if not consulta["on_circle"]:
+            r_q = consulta["radio_q"]
+            if r_q > 1e-9:
+                # Proyección sobre el círculo desde el centro C
+                sx = C + (sq - C) * R / r_q
+                ty =       tq      * R / r_q
+                ax.plot([sq, sx], [tq, ty], ':', color=col, lw=1.2)
+                ax.plot(sx, ty, 'o', color=col, markersize=6,
+                        markeredgecolor='black', markeredgewidth=0.5)
 
     # Encuadre con margen
     margen = 0.3 * R + 1.0

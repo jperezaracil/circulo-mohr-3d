@@ -71,6 +71,84 @@ def estado_caras(Tp):
     return out
 
 
+def localizar_punto_3d(s_arr, vecs, sigma_q, tau_q):
+    """
+    Localiza un punto (σ_q, |τ_q|) sobre el diagrama de Mohr 3D.
+
+    s_arr   [σ1, σ2, σ3] tensiones principales (σ1 ≥ σ2 ≥ σ3).
+    vecs    matriz 3×3 con las direcciones principales por columnas
+            (en coords globales x, y, z).
+    sigma_q tensión normal consultada (escalar).
+    tau_q   |τ| consultado (≥ 0).
+
+    Devuelve dict con admisibilidad, cosenos² del vector normal en ejes
+    principales, identificación del círculo sobre el que cae (si lo hace),
+    y un vector normal candidato (en coords globales).
+    """
+    s1, s2, s3 = (float(s_arr[0]), float(s_arr[1]), float(s_arr[2]))
+    s = float(sigma_q)
+    tau = float(abs(tau_q))
+
+    C12, R12 = (s1 + s2) / 2.0, (s1 - s2) / 2.0
+    C23, R23 = (s2 + s3) / 2.0, (s2 - s3) / 2.0
+    C13, R13 = (s1 + s3) / 2.0, (s1 - s3) / 2.0
+
+    EPS = 1e-9
+    den_l = (s1 - s2) * (s1 - s3)
+    den_m = (s2 - s3) * (s2 - s1)
+    den_n = (s3 - s1) * (s3 - s2)
+    l2 = (((s - s2) * (s - s3) + tau**2) / den_l) if abs(den_l) > EPS else float('nan')
+    m2 = (((s - s3) * (s - s1) + tau**2) / den_m) if abs(den_m) > EPS else float('nan')
+    n2 = (((s - s1) * (s - s2) + tau**2) / den_n) if abs(den_n) > EPS else float('nan')
+
+    scale2 = max(R13**2, 1.0)
+    tol = 1e-3 * scale2
+
+    def en_circulo(C, R):
+        return abs((s - C)**2 + tau**2 - R**2) <= tol
+
+    en_C13 = en_circulo(C13, R13)
+    en_C12 = en_circulo(C12, R12)
+    en_C23 = en_circulo(C23, R23)
+    nombre_circ = ("C13" if en_C13 else
+                   "C12" if en_C12 else
+                   "C23" if en_C23 else None)
+
+    dentro_C13 = (s - C13)**2 + tau**2 <= R13**2 + tol
+    fuera_C12  = (s - C12)**2 + tau**2 >= R12**2 - tol
+    fuera_C23  = (s - C23)**2 + tau**2 >= R23**2 - tol
+    admisible  = bool(dentro_C13 and fuera_C12 and fuera_C23 and tau >= -1e-9)
+
+    if admisible and all(x == x for x in (l2, m2, n2)):
+        l = float(np.sqrt(max(l2, 0.0)))
+        m = float(np.sqrt(max(m2, 0.0)))
+        n_ = float(np.sqrt(max(n2, 0.0)))
+        # Vector normal en coords globales (eligiendo signos +,+,+)
+        n_principal = np.array([l, m, n_])
+        n_global = vecs @ n_principal
+        nrm = np.linalg.norm(n_global)
+        if nrm > 1e-12:
+            n_global = n_global / nrm
+    else:
+        l = m = n_ = float('nan')
+        n_global = None
+
+    return {
+        "sigma_q": s, "tau_q": tau,
+        "admisible": admisible,
+        "l2": l2, "m2": m2, "n2": n2,
+        "l": l, "m": m, "n": n_,
+        "n_global": n_global,
+        "en_circulo": nombre_circ,
+        "C12": C12, "R12": R12,
+        "C23": C23, "R23": R23,
+        "C13": C13, "R13": R13,
+        "dentro_C13": bool(dentro_C13),
+        "fuera_C12":  bool(fuera_C12),
+        "fuera_C23":  bool(fuera_C23),
+    }
+
+
 def tensiones_en_plano(T0, theta_deg, phi_deg):
     """
     Tensiones sobre un plano arbitrario, definido por la dirección de su
@@ -229,7 +307,7 @@ def dibujar_cubo_3d(ax, T0, R, plano=None):
     ax.set_title(titulo)
 
 
-def dibujar_mohr_3d(ax, T0, R, plano=None):
+def dibujar_mohr_3d(ax, T0, R, plano=None, consulta=None):
     ax.clear()
     Tp = transformar_tensor(T0, R)
     s_arr, _ = tensiones_principales_3d(T0)
@@ -282,6 +360,20 @@ def dibujar_mohr_3d(ax, T0, R, plano=None):
                 label='Plano oblicuo')
         ax.annotate(f"  Plano ({sn_pl:.1f}, {tn_pl:.1f})",
                     xy=(sn_pl, tn_pl), color='magenta',
+                    fontsize=10, fontweight='bold', va='center')
+
+    # Punto de consulta (σ_q, |τ_q|)
+    if consulta is not None:
+        sq = consulta["sigma_q"]
+        tq = consulta["tau_q"]
+        col = '#e67e22' if consulta["admisible"] else '#7f8c8d'
+        etiqueta = ('Consulta (admisible)' if consulta["admisible"]
+                    else 'Consulta (NO admisible)')
+        ax.plot(sq, tq, marker='D', color=col, markersize=13,
+                markeredgecolor='black', markeredgewidth=0.8, zorder=8,
+                label=etiqueta)
+        ax.annotate(f"  ({sq:.1f}, {tq:.1f})",
+                    xy=(sq, tq), color=col,
                     fontsize=10, fontweight='bold', va='center')
 
     ax.axhline(0, color='gray', lw=0.7)
@@ -365,6 +457,26 @@ if mostrar_plano:
 else:
     theta_p, phi_p = None, None
 
+# --- Consulta de un punto (σ_n, |τ|) ---
+st.sidebar.markdown("---")
+st.sidebar.header("Consultar punto (σ, |τ|)")
+activar_consulta_3d = st.sidebar.checkbox(
+    "Introducir (σ_n, |τ|) y localizarlo en el diagrama",
+    value=False,
+    help="Comprueba si un par (σ_n, |τ|) cae dentro de la región admisible "
+         "(zona amarilla) o sobre alguno de los tres círculos. Si es "
+         "admisible, calcula los cosenos² del vector normal en ejes "
+         "principales y una orientación posible del plano."
+)
+if activar_consulta_3d:
+    sigma_q_3d = st.sidebar.number_input("σ_n consultado", value=40.0,
+                                         step=5.0, format="%.2f")
+    tau_q_3d   = st.sidebar.number_input("|τ| consultado (≥ 0)",
+                                         value=30.0, step=5.0,
+                                         min_value=0.0, format="%.2f")
+else:
+    sigma_q_3d, tau_q_3d = None, None
+
 
 # ---------------------------------------------------------------------------
 # Cálculos y figura
@@ -372,15 +484,17 @@ else:
 T0 = matriz_tension(sigma_x, sigma_y, sigma_z, tau_xy, tau_xz, tau_yz)
 R  = matriz_rotacion(alpha, beta, gamma)
 Tp = transformar_tensor(T0, R)
-s_arr, _ = tensiones_principales_3d(T0)
+s_arr, vecs = tensiones_principales_3d(T0)
 
 plano = tensiones_en_plano(T0, theta_p, phi_p) if mostrar_plano else None
+consulta_3d = (localizar_punto_3d(s_arr, vecs, sigma_q_3d, tau_q_3d)
+               if activar_consulta_3d else None)
 
 fig = plt.figure(figsize=(14, 6.5))
 ax1 = fig.add_subplot(1, 2, 1, projection='3d')
 ax2 = fig.add_subplot(1, 2, 2)
 dibujar_cubo_3d(ax1, T0, R, plano=plano)
-dibujar_mohr_3d(ax2, T0, R, plano=plano)
+dibujar_mohr_3d(ax2, T0, R, plano=plano, consulta=consulta_3d)
 plt.tight_layout()
 st.pyplot(fig)
 
@@ -551,6 +665,133 @@ es el vector $\vec{\tau} = \vec{t} - \sigma_n\vec{n}$, contenido en el plano,
 de magnitud $|\vec{\tau}| = \sqrt{\tau_{e_\theta}^2 + \tau_{e_\varphi}^2}$.
             """
         )
+
+
+# ---------------------------------------------------------------------------
+# Resultados — punto de consulta (σ, |τ|)
+# ---------------------------------------------------------------------------
+if consulta_3d is not None:
+    st.markdown("---")
+    st.subheader("Punto de consulta (σ, |τ|) en el diagrama 3D")
+
+    cA, cB = st.columns(2)
+
+    with cA:
+        st.markdown("**Punto introducido**")
+        st.latex(
+            rf"(\sigma_n,\ |\tau|) = "
+            rf"({consulta_3d['sigma_q']:+.2f},\ {consulta_3d['tau_q']:.2f})"
+        )
+        st.markdown("**Círculos del estado**")
+        st.latex(
+            rf"C_{{13}} = {consulta_3d['C13']:+.2f},\quad "
+            rf"R_{{13}} = {consulta_3d['R13']:.2f}"
+        )
+        st.latex(
+            rf"C_{{12}} = {consulta_3d['C12']:+.2f},\quad "
+            rf"R_{{12}} = {consulta_3d['R12']:.2f}"
+        )
+        st.latex(
+            rf"C_{{23}} = {consulta_3d['C23']:+.2f},\quad "
+            rf"R_{{23}} = {consulta_3d['R23']:.2f}"
+        )
+
+    with cB:
+        st.markdown("**Resultado**")
+        if consulta_3d["admisible"]:
+            if consulta_3d["en_circulo"] == "C13":
+                st.success(
+                    "El punto cae **sobre el círculo $C_{13}$** "
+                    "(el grande). El plano que ve este estado contiene a "
+                    "$\\sigma_1$ y $\\sigma_3$ y es **perpendicular a la "
+                    "dirección principal $\\sigma_2$** "
+                    "($m^2 = 0$)."
+                )
+            elif consulta_3d["en_circulo"] == "C12":
+                st.success(
+                    "El punto cae **sobre el círculo $C_{12}$**. El plano "
+                    "que ve este estado contiene a $\\sigma_1$ y "
+                    "$\\sigma_2$ y es **perpendicular a la dirección "
+                    "principal $\\sigma_3$** ($n^2 = 0$)."
+                )
+            elif consulta_3d["en_circulo"] == "C23":
+                st.success(
+                    "El punto cae **sobre el círculo $C_{23}$**. El plano "
+                    "que ve este estado contiene a $\\sigma_2$ y "
+                    "$\\sigma_3$ y es **perpendicular a la dirección "
+                    "principal $\\sigma_1$** ($l^2 = 0$)."
+                )
+            else:
+                st.success(
+                    "El punto cae **dentro de la región admisible** "
+                    "(zona amarilla) pero no sobre ningún círculo: "
+                    "corresponde a planos cuya normal no es perpendicular "
+                    "a ninguna dirección principal."
+                )
+
+            st.markdown(
+                "**Cosenos² de la normal en ejes principales** "
+                "(fórmulas de Mohr 3D)"
+            )
+            l2, m2, n2 = consulta_3d["l2"], consulta_3d["m2"], consulta_3d["n2"]
+            st.latex(rf"l^2 = \cos^2(\hat n,\, \vec e_1) = {l2:.4f}")
+            st.latex(rf"m^2 = \cos^2(\hat n,\, \vec e_2) = {m2:.4f}")
+            st.latex(rf"n^2 = \cos^2(\hat n,\, \vec e_3) = {n2:.4f}")
+            st.caption(
+                f"Suma de cosenos² = {l2 + m2 + n2:.4f} "
+                "(debe valer 1; las pequeñas desviaciones son por redondeo)."
+            )
+
+            if consulta_3d["n_global"] is not None:
+                ng = consulta_3d["n_global"]
+                st.markdown(
+                    "**Una orientación posible del plano** (vector normal en "
+                    "coordenadas globales x, y, z)"
+                )
+                st.latex(
+                    rf"\hat n = ({ng[0]:+.3f},\ {ng[1]:+.3f},\ {ng[2]:+.3f})"
+                )
+                st.caption(
+                    "Hay hasta **4 planos distintos** que ven el mismo "
+                    "$(\\sigma_n, |\\tau|)$, correspondientes a las "
+                    "combinaciones de signos $(\\pm l,\\, \\pm m,\\, \\pm n)$. "
+                    "Aquí se muestra una de ellas (la de signos +,+,+ en ejes "
+                    "principales)."
+                )
+        else:
+            st.error(
+                "El punto **NO es admisible**: queda fuera de la región "
+                "amarilla. No corresponde a ningún plano físico de este "
+                "estado tensional."
+            )
+            razones = []
+            if not consulta_3d["dentro_C13"]:
+                razones.append(
+                    "está **fuera del círculo grande $C_{13}$** "
+                    "($|\\tau|$ supera la cortante máxima del estado)"
+                )
+            if not consulta_3d["fuera_C12"]:
+                razones.append(
+                    "está **dentro del círculo $C_{12}$** "
+                    "(la región amarilla excluye su interior)"
+                )
+            if not consulta_3d["fuera_C23"]:
+                razones.append(
+                    "está **dentro del círculo $C_{23}$** "
+                    "(la región amarilla excluye su interior)"
+                )
+            for r in razones:
+                st.markdown(f"- {r}")
+
+    st.info(
+        "**Interpretación**: el diagrama de Mohr 3D usa siempre $|\\tau| "
+        "\\ge 0$ en el eje vertical. Cualquier plano que pase por el "
+        "punto del sólido tiene una pareja $(\\sigma_n,\\, |\\tau|)$ "
+        "dentro de la región amarilla. Recíprocamente, todo punto de la "
+        "región amarilla es realizable por algún plano (de hecho hasta "
+        "por 4 planos distintos: combinaciones de signos de los cosenos "
+        "directores)."
+    )
 
 
 # ---------------------------------------------------------------------------

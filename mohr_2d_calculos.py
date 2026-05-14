@@ -89,3 +89,76 @@ def tensiones_en_plano_2d(sy, sz, tyz, alpha_deg):
         "tau_signed": tau_signed,
         "tau_mag": tau_mag,
     }
+
+
+def localizar_punto_2d(sy, sz, tyz, sigma_q, tau_q):
+    """
+    Dado un estado tensional 2D y un punto de consulta (σ_q, τ_q) en el
+    plano de Mohr, determina si ese punto cae sobre el círculo y, si es
+    así, la orientación α del plano cuya cara tiene esa tensión.
+
+    El punto (σ_q, τ_q) se interpreta tal cual se ve en el diagrama de
+    Mohr (con la convención de la app: τ positivo hacia arriba).
+
+    Devuelve dict con:
+        on_circle    True si (σ_q − C)² + τ_q² ≈ R² (tolerancia relativa)
+        dist         Distancia del punto al círculo (|radio − r|)
+        radio_q      sqrt((σ_q − C)² + τ_q²)
+        C, R         centro y radio del círculo
+        alpha_y      α (grados) de la **normal** del plano cuya cara y'
+                     coincide con (σ_q, τ_q). Equivale al ángulo θ que
+                     hay que girar el elemento para que la cara y'
+                     marque ese punto.
+        alpha_z      α + 90° (la cara opuesta z' del mismo elemento
+                     marca el punto diametralmente opuesto).
+        sigma_perp   Tensión normal sobre el plano perpendicular
+                     (cara z' a la vez que la y' marca (σ_q, τ_q)).
+        tau_perp     Tensión cortante (con signo) sobre ese plano
+                     perpendicular.
+    """
+    media = (sy + sz) / 2.0
+    R = float(np.sqrt(((sy - sz) / 2.0) ** 2 + tyz ** 2))
+    C = float(media)
+    r_q = float(np.sqrt((sigma_q - C) ** 2 + tau_q ** 2))
+    dist = abs(r_q - R)
+    tol = 1e-3 * R + 1e-6
+    on_circle = bool(dist <= tol)
+
+    # Convención del diagrama: la cara y' del elemento girado un ángulo
+    # α se plotea en (σ_y'(α), −τ_y'z'(α)).  Desarrollando:
+    #     σ_q − C =  p cos(2α) + q sin(2α)
+    #     τ_q     =  p sin(2α) − q cos(2α)
+    # con p=(σy−σz)/2, q=τyz.  Escribiendo (p, q) = R(cosβ, sinβ) y
+    # (σ_q−C, τ_q) = R(cos ψ, sin ψ), resulta ψ = 2α − β, así que:
+    p, q = (sy - sz) / 2.0, tyz
+    psi  = np.arctan2(tau_q,     sigma_q - C)
+    beta = np.arctan2(q,         p)
+    alpha_y_rad = (psi + beta) / 2.0
+    alpha_y = float(np.degrees(alpha_y_rad))
+    # Normaliza a (−90°, 90°]
+    while alpha_y >  90.0: alpha_y -= 180.0
+    while alpha_y <= -90.0: alpha_y += 180.0
+    alpha_z = alpha_y + 90.0
+    if alpha_z > 90.0:
+        alpha_z -= 180.0
+
+    # Tensiones sobre la cara perpendicular (z' del mismo elemento)
+    syp, szp, typ = transformar_2d(sy, sz, tyz, alpha_y)
+    # Cuando la cara y' marca (σ_q, τ_q) en el diagrama (con τ_q en eje
+    # vertical, convención app), la cara z' marca (σ_z', +τ_y'z') que
+    # equivale a (σ_z', +τ).  La σ del plano perpendicular es szp y la
+    # τ "tal y como se ve en el diagrama" en la cara z' es +typ.
+    sigma_perp = float(szp)
+    tau_perp   = float(typ)
+
+    return {
+        "on_circle": on_circle,
+        "dist":      dist,
+        "radio_q":   r_q,
+        "C":         C,
+        "R":         R,
+        "alpha_y":   alpha_y,
+        "alpha_z":   float(alpha_z),
+        "sigma_perp": sigma_perp,
+        "tau_perp":   tau_perp,
+    }

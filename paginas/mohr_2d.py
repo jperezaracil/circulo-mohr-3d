@@ -22,6 +22,7 @@ from mohr_2d_calculos import (
     transformar_2d,
     principales_2d,
     tensiones_en_plano_2d,
+    localizar_punto_2d,
 )
 from mohr_2d_graficas import dibujar_elemento_2d, dibujar_mohr_2d
 
@@ -95,6 +96,23 @@ with st.sidebar:
     else:
         alpha = None
 
+    st.divider()
+    st.header("Consultar punto (σ, τ)")
+    activar_consulta = st.checkbox(
+        "Introducir (σ_n, τ) y localizarlo en el círculo",
+        value=False,
+        help="Introduces un par (σ_n, τ) tal como se lee en el diagrama "
+             "de Mohr. La app dice si cae sobre el círculo y, en su caso, "
+             "el ángulo θ que orienta la cara y' para producir esa tensión."
+    )
+    if activar_consulta:
+        sigma_q = st.number_input("σ_n consultado", value=60.0, step=5.0,
+                                  format="%.2f")
+        tau_q   = st.number_input("τ consultado (signo según diagrama)",
+                                  value=20.0, step=5.0, format="%.2f")
+    else:
+        sigma_q, tau_q = None, None
+
 
 # ---------------------------------------------------------------------------
 # Cálculos
@@ -105,6 +123,13 @@ s1, s2, R, C, theta_p = principales_2d(sigma_y, sigma_z, tau_yz)
 plano = (tensiones_en_plano_2d(sigma_y, sigma_z, tau_yz, alpha)
          if activar_plano else None)
 
+if activar_consulta:
+    consulta = localizar_punto_2d(sigma_y, sigma_z, tau_yz, sigma_q, tau_q)
+    consulta["sigma_q"] = sigma_q
+    consulta["tau_q"]   = tau_q
+else:
+    consulta = None
+
 
 # ---------------------------------------------------------------------------
 # Paneles gráficos
@@ -113,7 +138,8 @@ fig = plt.figure(figsize=(13, 6))
 ax1 = fig.add_subplot(1, 2, 1)
 ax2 = fig.add_subplot(1, 2, 2)
 dibujar_elemento_2d(ax1, sigma_y, sigma_z, tau_yz, theta, plano=plano)
-dibujar_mohr_2d  (ax2, sigma_y, sigma_z, tau_yz, theta, plano=plano)
+dibujar_mohr_2d  (ax2, sigma_y, sigma_z, tau_yz, theta,
+                  plano=plano, consulta=consulta)
 plt.tight_layout()
 st.pyplot(fig)
 
@@ -180,6 +206,79 @@ if plano is not None:
         "marca el punto $(\\sigma_n,\\, -\\tau)$ siguiendo la convención del "
         "diagrama (con $\\tau$ positivo hacia abajo cuando se aplica el signo "
         "tangencial)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Consulta de un punto (σ_q, τ_q)
+# ---------------------------------------------------------------------------
+if consulta is not None:
+    st.markdown("---")
+    st.subheader("Punto de consulta (σ_n, τ) sobre el círculo")
+
+    cA, cB = st.columns(2)
+    with cA:
+        st.markdown("**Punto introducido**")
+        st.latex(rf"(\sigma_n,\ \tau) = ({sigma_q:+.2f},\ {tau_q:+.2f})")
+        st.latex(rf"C = {consulta['C']:+.2f},\quad R = {consulta['R']:.2f}")
+        st.latex(
+            rf"r_q = \sqrt{{(\sigma_n-C)^2 + \tau^2}} = {consulta['radio_q']:.2f}"
+        )
+        st.latex(rf"|r_q - R| = {consulta['dist']:.3f}")
+
+    with cB:
+        st.markdown("**Resultado**")
+        if consulta["on_circle"]:
+            st.success(
+                "El punto cae **sobre el círculo de Mohr**: corresponde a un "
+                "plano real del mismo estado tensional."
+            )
+            st.latex(
+                rf"\theta\ (\text{{cara }} y') = {consulta['alpha_y']:+.2f}^{{\circ}}"
+            )
+            st.caption(
+                "Es el ángulo θ al que hay que girar el elemento para que la "
+                "cara y' marque exactamente este punto. La cara z' del mismo "
+                "elemento marcará el punto diametralmente opuesto."
+            )
+            st.latex(
+                rf"\theta\ (\text{{cara }} z') = {consulta['alpha_z']:+.2f}^{{\circ}}"
+            )
+            st.caption(
+                "Orientación alternativa: si en lugar de la cara y' eliges "
+                "la cara z' para marcar el punto, hay que girar el elemento "
+                "este otro ángulo (las dos caras se intercambian)."
+            )
+            st.markdown("**Tensiones sobre la cara perpendicular**")
+            st.latex(
+                rf"\sigma_{{\perp}} = {consulta['sigma_perp']:+.2f},\quad "
+                rf"\tau_{{\perp}} = {consulta['tau_perp']:+.2f}"
+            )
+        else:
+            st.error(
+                f"El punto **NO está sobre el círculo** (distancia "
+                f"{consulta['dist']:.2f}). No corresponde a ningún plano "
+                "físico de este estado tensional."
+            )
+            if consulta["radio_q"] > consulta["R"]:
+                st.caption(
+                    "Está **fuera** del círculo: la magnitud "
+                    "$\\sqrt{(\\sigma_n-C)^2+\\tau^2}$ supera el radio R, "
+                    "imposible en este estado."
+                )
+            else:
+                st.caption(
+                    "Está **dentro** del círculo: ningún plano de este "
+                    "estado 2D ve simultáneamente esa $\\sigma_n$ y esa $\\tau$. "
+                    "El punto más cercano del círculo aparece marcado con un "
+                    "círculo pequeño en el diagrama."
+                )
+
+    st.info(
+        "**Convención del signo de τ**: el punto se introduce y se dibuja "
+        "tal como aparece en el panel derecho. La cara y' del elemento se "
+        "plotea en $(\\sigma_{y'},\\, -\\tau_{y'z'})$, así que un τ positivo "
+        "en el diagrama corresponde a $\\tau_{y'z'} < 0$ (y viceversa)."
     )
 
 
