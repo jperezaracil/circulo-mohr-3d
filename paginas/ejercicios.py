@@ -369,8 +369,7 @@ _ejercicio(
     r"""
 Un punto está sometido al estado tensional:
 
-$$\sigma_y = 70\ \text{MPa},\quad \sigma_z = 20\ \text{MPa},
-  \quad \tau_{yz} = 30\ \text{MPa}.$$
+$$\sigma_y = 70\ \text{MPa},\quad \sigma_z = 20\ \text{MPa},\quad \tau_{yz} = 30\ \text{MPa}.$$
 
 Calcula:
 
@@ -387,20 +386,15 @@ Calcula:
 
 $$C = \frac{70 + 20}{2} = 45\ \text{MPa}$$
 
-$$R = \sqrt{\left(\tfrac{70-20}{2}\right)^2 + 30^2}
-    = \sqrt{25^2 + 30^2} = \sqrt{1525} \approx 39{,}05\ \text{MPa}$$
+$$R = \sqrt{\left(\tfrac{70-20}{2}\right)^2 + 30^2} = \sqrt{25^2 + 30^2} = \sqrt{1525} \approx 39{,}05\ \text{MPa}$$
 
 **Tensiones principales:**
 
-$$\sigma_1 = C + R \approx 84{,}05\ \text{MPa},\qquad
-  \sigma_2 = C - R \approx 5{,}95\ \text{MPa}$$
+$$\sigma_1 = C + R \approx 84{,}05\ \text{MPa},\qquad \sigma_2 = C - R \approx 5{,}95\ \text{MPa}$$
 
 **Ángulo principal:**
 
-$$\tan(2\theta_p) = \frac{2\tau_{yz}}{\sigma_y-\sigma_z}
-                  = \frac{60}{50} = 1{,}2
-\;\Rightarrow\; 2\theta_p \approx 50{,}19^{\circ}
-\;\Rightarrow\; \theta_p \approx 25{,}1^{\circ}$$
+$$\tan(2\theta_p) = \frac{2\tau_{yz}}{\sigma_y-\sigma_z} = \frac{60}{50} = 1{,}2 \;\Rightarrow\; 2\theta_p \approx 50{,}19^{\circ} \;\Rightarrow\; \theta_p \approx 25{,}1^{\circ}$$
 
 **Cortante máxima en el plano**: $\tau_{\max} = R \approx 39{,}1\ \text{MPa}$,
 en un plano a $\theta_p + 45^{\circ} \approx 70{,}1^{\circ}$ del eje $y$.
@@ -426,16 +420,11 @@ sentido lo que observas?
     r"""
 Aplicando las fórmulas de transformación con $\alpha = 30^{\circ}$:
 
-$$\sigma_n = \tfrac{\sigma_y+\sigma_z}{2}
-           + \tfrac{\sigma_y-\sigma_z}{2}\cos 2\alpha
-           + \tau_{yz}\sin 2\alpha
-         = 45 + 25\cos 60^{\circ} + 30\sin 60^{\circ}$$
+$$\sigma_n = \tfrac{\sigma_y+\sigma_z}{2} + \tfrac{\sigma_y-\sigma_z}{2}\cos 2\alpha + \tau_{yz}\sin 2\alpha = 45 + 25\cos 60^{\circ} + 30\sin 60^{\circ}$$
 
 $$\sigma_n = 45 + 12{,}5 + 25{,}98 \approx 83{,}48\ \text{MPa}$$
 
-$$\tau = -\tfrac{\sigma_y-\sigma_z}{2}\sin 2\alpha
-         + \tau_{yz}\cos 2\alpha
-       = -25\sin 60^{\circ} + 30\cos 60^{\circ}$$
+$$\tau = -\tfrac{\sigma_y-\sigma_z}{2}\sin 2\alpha + \tau_{yz}\cos 2\alpha = -25\sin 60^{\circ} + 30\cos 60^{\circ}$$
 
 $$\tau = -21{,}65 + 15 = -6{,}65\ \text{MPa}$$
 
@@ -511,8 +500,7 @@ $R = 30$, y aquí $\beta = 0$ porque $\tau_{yz} = 0$:
 
 $$60 = 50 + 30\cos(2\alpha) \;\Longrightarrow\; \cos(2\alpha) = \tfrac{1}{3}$$
 
-$$2\alpha = \pm\arccos(\tfrac{1}{3}) \approx \pm 70{,}53^{\circ}
-\;\Longrightarrow\; \alpha \approx \pm 35{,}26^{\circ}$$
+$$2\alpha = \pm\arccos(\tfrac{1}{3}) \approx \pm 70{,}53^{\circ} \;\Longrightarrow\; \alpha \approx \pm 35{,}26^{\circ}$$
 
 Para la cortante, $\tau_{\text{signed}} = -\tfrac{\sigma_y-\sigma_z}{2}\sin 2\alpha
 + \tau_{yz}\cos 2\alpha = -30\sin(\pm 70{,}53^{\circ})$:
@@ -546,13 +534,11 @@ $\sigma_{e} = 320$ MPa.
     r"""
 **1) Tensiones principales en el plano YZ:**
 
-$$C = (100 - 40)/2 = 30,\qquad
-  R = \sqrt{((100-(-40))/2)^2 + 50^2} = \sqrt{70^2 + 50^2}$$
+$$C = (100 - 40)/2 = 30,\qquad R = \sqrt{((100-(-40))/2)^2 + 50^2} = \sqrt{70^2 + 50^2}$$
 
 $$R = \sqrt{4900 + 2500} = \sqrt{7400} \approx 86{,}02\ \text{MPa}$$
 
-$$\sigma_1 = 30 + 86{,}02 \approx 116{,}02\ \text{MPa},\qquad
-  \sigma_2 = 30 - 86{,}02 \approx -56{,}02\ \text{MPa}$$
+$$\sigma_1 = 30 + 86{,}02 \approx 116{,}02\ \text{MPa},\qquad \sigma_2 = 30 - 86{,}02 \approx -56{,}02\ \text{MPa}$$
 
 **2) Cortantes máximas:**
 
@@ -568,8 +554,7 @@ cortante 3D coincide con la 2D.
 
 **3) Tresca:**
 
-$$n = \frac{\sigma_e}{2\,\tau_{\max,\,3D}}
-    = \frac{320}{2\cdot 86{,}02} \approx 1{,}86$$
+$$n = \frac{\sigma_e}{2\,\tau_{\max,\,3D}} = \frac{320}{2\cdot 86{,}02} \approx 1{,}86$$
 
 Está **por debajo del coeficiente de seguridad recomendado**
 $n \ge 2$, por lo que la pieza está al límite y conviene reducir las
